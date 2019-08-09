@@ -155,7 +155,8 @@ typedef enum DEBOUNCE_STATE
 typedef enum REFLOW_PROFILE
 {
   REFLOW_PROFILE_LEADFREE,
-  REFLOW_PROFILE_LEADED
+  REFLOW_PROFILE_LEADED,
+  REFLOW_PROFILE_TS391AX50
 } reflowProfile_t;
 
 // ***** CONSTANTS *****
@@ -176,6 +177,11 @@ typedef enum REFLOW_PROFILE
 #define TEMPERATURE_SOAK_MAX_PB 180
 #define TEMPERATURE_REFLOW_MAX_PB 224
 #define SOAK_MICRO_PERIOD_PB 10000
+
+// ***** TS391AX50 PROFILE CONSTANTS *****
+#define TEMPERATURE_SOAK_MAX_AX 183
+#define TEMPERATURE_REFLOW_MAX_AX 234
+#define SOAK_MICRO_PERIOD_AX 10000
 
 // ***** SWITCH SPECIFIC CONSTANTS *****
 #define DEBOUNCE_PERIOD_MIN 100
@@ -271,7 +277,7 @@ void setup()
 {
   // Check current selected reflow profile
   unsigned char value = EEPROM.read(PROFILE_TYPE_ADDRESS);
-  if ((value == 0) || (value == 1))
+  if ((value == 0) || (value == 1) || (value == 2))
   {
     // Valid reflow profile value
     reflowProfile = value;
@@ -398,14 +404,16 @@ void loop()
     // Print current system state
     lcd.print(lcdMessagesReflowStatus[reflowState]);
     lcd.setCursor(6, 0);
-    if (reflowProfile == REFLOW_PROFILE_LEADFREE)
-    {
-      lcd.print("LF");
-    }
-    else
-    {
-      lcd.print("PB");
-    }
+    switch(reflowProfile){
+      case REFLOW_PROFILE_LEADFREE:
+        lcd.print("LF");
+        break;
+      case REFLOW_PROFILE_TS391AX50:
+        lcd.print("AX");
+        break;
+      default:
+        lcd.print("PB");
+    };
     // Move the cursor to the 2 line
     lcd.setCursor(0, 1);
 
@@ -454,18 +462,28 @@ void loop()
           // Ramp up to minimum soaking temperature
           setpoint = TEMPERATURE_SOAK_MIN;
           // Load profile specific constant
-          if (reflowProfile == REFLOW_PROFILE_LEADFREE)
-          {
-            soakTemperatureMax = TEMPERATURE_SOAK_MAX_LF;
-            reflowTemperatureMax = TEMPERATURE_REFLOW_MAX_LF;
-            soakMicroPeriod = SOAK_MICRO_PERIOD_LF;
-          }
-          else
-          {
-            soakTemperatureMax = TEMPERATURE_SOAK_MAX_PB;
-            reflowTemperatureMax = TEMPERATURE_REFLOW_MAX_PB;
-            soakMicroPeriod = SOAK_MICRO_PERIOD_PB;
-          }
+          switch(reflowProfile){
+            case REFLOW_PROFILE_LEADFREE:
+            {
+              soakTemperatureMax = TEMPERATURE_SOAK_MAX_LF;
+              reflowTemperatureMax = TEMPERATURE_REFLOW_MAX_LF;
+              soakMicroPeriod = SOAK_MICRO_PERIOD_LF;
+            }
+            break;
+            case REFLOW_PROFILE_TS391AX50:
+            {
+              soakTemperatureMax = TEMPERATURE_SOAK_MAX_AX;
+              reflowTemperatureMax = TEMPERATURE_REFLOW_MAX_AX;
+              soakMicroPeriod = SOAK_MICRO_PERIOD_AX;
+            }
+            break;
+            default:
+            {
+              soakTemperatureMax = TEMPERATURE_SOAK_MAX_PB;
+              reflowTemperatureMax = TEMPERATURE_REFLOW_MAX_PB;
+              soakMicroPeriod = SOAK_MICRO_PERIOD_PB;
+            }
+          };
           // Tell the PID to range between 0 and the full window size
           reflowOvenPID.SetOutputLimits(0, windowSize);
           reflowOvenPID.SetSampleTime(PID_SAMPLE_TIME);
@@ -604,20 +622,25 @@ void loop()
     // Only can switch reflow profile during idle
     if (reflowState == REFLOW_STATE_IDLE)
     {
-      // Currently using lead-free reflow profile
-      if (reflowProfile == REFLOW_PROFILE_LEADFREE)
-      {
-        // Switch to leaded reflow profile
-        reflowProfile = REFLOW_PROFILE_LEADED;
-        EEPROM.write(PROFILE_TYPE_ADDRESS, 1);
-      }
-      // Currently using leaded reflow profile
-      else
-      {
-        // Switch to lead-free profile
-        reflowProfile = REFLOW_PROFILE_LEADFREE;
-        EEPROM.write(PROFILE_TYPE_ADDRESS, 0);
-      }
+      switch(reflowProfile){
+        case REFLOW_PROFILE_LEADFREE:
+        {
+          reflowProfile = REFLOW_PROFILE_TS391AX50;
+          EEPROM.write(PROFILE_TYPE_ADDRESS, 2);
+        }
+        break;
+        case REFLOW_PROFILE_TS391AX50: 
+        {
+          reflowProfile = REFLOW_PROFILE_LEADED; // Switch to leaded reflow profile
+          EEPROM.write(PROFILE_TYPE_ADDRESS, 1);
+        }
+        break;
+        default:
+        {
+          reflowProfile = REFLOW_PROFILE_LEADFREE; // Switch to lead-free profile
+          EEPROM.write(PROFILE_TYPE_ADDRESS, 0);
+        }
+      };
     }
   }
   // Switch status has been read
